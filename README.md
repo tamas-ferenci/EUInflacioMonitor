@@ -11,7 +11,7 @@ A weboldal [R Shiny](https://shiny.rstudio.com/) segítségével készült, [R s
 A weboldalhoz a következő fájlok tartoznak:
 - [app.R](https://github.com/tamas-ferenci/EUInflacioMonitor/blob/main/app.R): Az oldal forráskódja.
 - [InflacioPrepare.R](https://github.com/tamas-ferenci/EUInflacioMonitor/blob/main/InflacioPrepare.R): Az adatokat előkészítő szkript.
-- [COICOPData.rds](https://github.com/tamas-ferenci/EUInflacioMonitor/blob/main/COICOPData.rds], RawDataCountryWeights.rds, RawDataInflation.rds: Az előkészített adatok.
+- [COICOPData.rds](https://github.com/tamas-ferenci/EUInflacioMonitor/blob/main/COICOPData.rds), RawDataCountryWeights.rds, RawDataInflation.rds: Az előkészített adatok.
 - Structure EN-GA-HR-HU-IT-LT-LV-MT.xlsx: A COICOP-hierachia adatforrása
 
 Az inflációs adatok forrása az Eurostat [prc_hicp_manr](https://ec.europa.eu/eurostat/databrowser/view/prc_hicp_manr/default/table?lang=en) adattáblája, az országok súlyai (amik alapján az összehasonlításnál az országcsoportok adatai számolhatóak a [prc_hicp_cow](https://ec.europa.eu/eurostat/databrowser/view/prc_hicp_cow/default/table?lang=en) táblából kerültek ki.
