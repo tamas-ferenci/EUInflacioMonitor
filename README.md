@@ -1,0 +1,2 @@
+# EUInflacioMonitor
+Európai Infláció Monitor
