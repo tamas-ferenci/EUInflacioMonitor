@@ -2,6 +2,8 @@ Európai Infláció Monitor
 ================
 Ferenci Tamás (www.medstat.hu)
 
+A weboldal elérhetősége: [http://87.229.84.127:3838/EUInflacioMonitor/](http://87.229.84.127:3838/EUInflacioMonitor/).
+
 ## Technikai részletek
 
 A weboldal [R Shiny](https://shiny.rstudio.com/) segítségével készült, [R statisztikai környezet](https://www.youtube.com/@FerenciTamas/playlists?view=50&sort=dd&shelf_id=2) alatt. A vizualizáláshoz a [Highcharts](https://www.highcharts.com/) könyvtárat használtam (R alatt a [highcharter](https://jkunst.com/highcharter/) csomag segítségével), illetve a [ggplot2](https://ggplot2.tidyverse.org/) csomagot.
