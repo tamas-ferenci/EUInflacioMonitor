@@ -128,7 +128,8 @@ ui <- fluidPage(
                                    c("Teljes EU és Egyesült Királyság" = "EU28", "Visegrádi négyek" = "V4",
                                      "Posztszocialista országok (EU11)" = "EU11", "EU15" = "EU15"))),
       conditionalPanel("input.task=='RelIndiv' | input.task=='RelGroup'",
-                       checkboxInput("robust", "Robusztus mutató megjelenítése"))
+                       checkboxInput("robust", "Robusztus mutató megjelenítése")),
+      selectInput("metric", "Inflációs mutató", c("Éves" = "annual", "Havi" = "monthly"))
     ),
     
     mainPanel(
@@ -144,7 +145,7 @@ ui <- fluidPage(
       
     )
   ), hr(),
-  h4("Írta: Ferenci Tamás, v0.01"),
+  h4("Írta: Ferenci Tamás, v0.03"),
   
   tags$script(HTML("var sc_project=12872814; 
                       var sc_invisible=1; 
@@ -189,15 +190,15 @@ server <- function(input, output) {
              if(input$alcsoport!="Mindegyik") code <- input$alcsoport
              if(input$kategoria!="Mindegyik") code <- input$kategoria
              temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&
-                               geo%in%c("Magyarország", eucountries[[input$countries]])]
+                               geo%in%c("Magyarország", eucountries[[input$countries]])&variable==input$metric]
              if(nrow(temp)==0) return(NULL)
              p <- highcharter::highchart() |>
                highcharter::hc_add_series(temp[geo!="Magyarország"], "line",
-                                          highcharter::hcaes(x = time, y = values, group = geo),
+                                          highcharter::hcaes(x = time, y = value, group = geo),
                                           color = "gray", lineWidth = 0.2,
                                           marker = list(enabled = FALSE)) |>
                highcharter::hc_add_series(temp[geo=="Magyarország"], "line",
-                                          highcharter::hcaes(x = time, y = values), lineWidth = 2,
+                                          highcharter::hcaes(x = time, y = value), lineWidth = 2,
                                           marker = list(enabled = FALSE), name = "Magyarország") |>
                highcharter::hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B")) |>
                highcharter::hc_yAxis(title = list(text = "Éves infláció [%]"))
@@ -207,20 +208,21 @@ server <- function(input, output) {
              if(input$csoport!="Mindegyik") code <- input$csoport
              if(input$alcsoport!="Mindegyik") code <- input$alcsoport
              if(input$kategoria!="Mindegyik") code <- input$kategoria
-             temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]]
+             temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&variable==input$metric]
              if(nrow(temp)==0) return(NULL)
              
              temp <- rbindlist(lapply(eucountries, function(countries) {
                merge(temp[geo=="Magyarország"],
                      merge(
-                       temp[geo%in%countries][, .(geo, year = lubridate::year(time), time, values)],
+                       temp[geo%in%countries&geo!="Magyarország"][
+                         , .(geo, year = lubridate::year(time), time, value)],
                        RawDataCountryWeights, by = c("geo", "year"))[
-                         , .(mu = matrixStats::weightedMean(values, weight),
-                             sigma = matrixStats::weightedSd(values, weight),
-                             med = matrixStats::weightedMedian(values, weight),
-                             wtmad = matrixStats::weightedMad(values, weight)), .(time)], by = "time")[
-                               , .(time, coicop, zscore = (values-mu)/sigma,
-                                   robzscore = (values-med)/wtmad)]
+                         , .(mu = matrixStats::weightedMean(value, weight),
+                             sigma = matrixStats::weightedSd(value, weight),
+                             med = matrixStats::weightedMedian(value, weight),
+                             wtmad = matrixStats::weightedMad(value, weight)), .(time)], by = "time")[
+                               , .(time, coicop, zscore = (value-mu)/sigma,
+                                   robzscore = (value-med)/wtmad)]
              }), idcol = "eustate")
              
              p <- highcharter::highchart() |>
@@ -259,17 +261,17 @@ server <- function(input, output) {
     switch(input$task,
            "AbsGroup" = {
              temp <- RawData[nchar(coicop)==4&substring(coicop, 1, 2)=="CP"&time>=input$daterange[1]&
-                               time<=input$daterange[2]&geo%in%c("Magyarország",
-                                                                 eucountries[[input$countries]])]
+                               time<=input$daterange[2]&
+                               geo%in%c("Magyarország", eucountries[[input$countries]])&variable==input$metric]
              temp <- merge(temp, COICOPData, by = "coicop")
              temp$COICOPname <- factor(temp$COICOPname,
                                        levels = unique(temp$COICOPname[order(temp$coicop)]))
              ggplot2::ggplot() +
                ggplot2::geom_line(data = temp[geo!="Magyarország"],
-                                  ggplot2::aes(x = time, y = values, group = geo), color = "gray",
+                                  ggplot2::aes(x = time, y = value, group = geo), color = "gray",
                                   linewidth = 0.2) +
                ggplot2::geom_line(data = temp[geo=="Magyarország"],
-                                  ggplot2::aes(x = time, y = values), color = "#2f7ed8", linewidth = 1) +
+                                  ggplot2::aes(x = time, y = value), color = "#2f7ed8", linewidth = 1) +
                ggplot2::facet_wrap(~COICOPname, scales = "free",
                                    labeller = ggplot2::label_wrap_gen(width = 36)) +
                ggplot2::labs(y = "Éves infláció [%]", x = "", tag = "Ferenci Tamás, medstat.hu") +
@@ -277,18 +279,19 @@ server <- function(input, output) {
            },
            "RelGroup" = {
              temp <- RawData[nchar(coicop)==4&substring(coicop, 1, 2)=="CP"&
-                               time>=input$daterange[1]&time<=input$daterange[2]]
+                               time>=input$daterange[1]&time<=input$daterange[2]&variable==input$metric]
              temp <- rbindlist(lapply(eucountries, function(countries) {
                merge(temp[geo=="Magyarország"],
                      merge(
-                       temp[geo%in%countries][, .(geo, year = lubridate::year(time), time, values, coicop)],
+                       temp[geo%in%countries&geo!="Magyarország"][
+                         , .(geo, year = lubridate::year(time), time, value, coicop)],
                        RawDataCountryWeights, by = c("geo", "year"))[
-                         , .(mu = matrixStats::weightedMean(values, weight),
-                             sigma = matrixStats::weightedSd(values, weight),
-                             med = matrixStats::weightedMedian(values, weight),
-                             wtmad = matrixStats::weightedMad(values, weight)), .(time, coicop)],
-                     by = c("time", "coicop"))[, .(time, coicop, zscore = (values-mu)/sigma,
-                                                   robzscore = (values-med)/wtmad)]
+                         , .(mu = matrixStats::weightedMean(value, weight),
+                             sigma = matrixStats::weightedSd(value, weight),
+                             med = matrixStats::weightedMedian(value, weight),
+                             wtmad = matrixStats::weightedMad(value, weight)), .(time, coicop)],
+                     by = c("time", "coicop"))[, .(time, coicop, zscore = (value-mu)/sigma,
+                                                   robzscore = (value-med)/wtmad)]
              }), idcol = "eustate")
              temp <- merge(temp, COICOPData, by = "coicop")
              temp$COICOPname <- factor(temp$COICOPname,

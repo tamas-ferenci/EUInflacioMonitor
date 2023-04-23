@@ -15,12 +15,14 @@ names(RawDataCountryWeights)[names(RawDataCountryWeights)=="values"] <- "weight"
 RawDataCountryWeights$geo <- countrycode::countrycode(RawDataCountryWeights$geo, "eurostat", "cldr.name.hu")
 saveRDS(RawDataCountryWeights, "RawDataCountryWeights.rds")
 
-RawData <- as.data.table(eurostat::get_eurostat("prc_hicp_manr"))
+RawData <- merge(as.data.table(eurostat::get_eurostat("prc_hicp_manr"))[, .(coicop, geo, time, annual = values)],
+                 as.data.table(eurostat::get_eurostat("prc_hicp_mmor"))[, .(coicop, geo, time, monthly = values)],
+                 by = c("coicop", "geo", "time"), all = TRUE)
 RawData <- RawData[geo%in%c(eurostat::eu_countries$code, "UK")&time>="1999-01-01"]
 RawData$year <- lubridate::year(RawData$time)
 RawData$geo <- countrycode::countrycode(RawData$geo, "eurostat", "cldr.name.hu")
-RawData <- RawData[, .(geo, time, coicop, values)]
-RawData <- RawData[order(geo, time)]
+RawData <- melt(RawData[, .(coicop, geo, time, annual, monthly)], id.vars = c("coicop", "geo", "time"))
+RawData <- RawData[order(geo, time, variable, coicop)]
 saveRDS(RawData, "RawDataInflation.rds")
 
 COICOPData <- as.data.table(readxl::read_excel("Structure EN-GA-HR-HU-IT-LT-LV-MT.xlsx"))
