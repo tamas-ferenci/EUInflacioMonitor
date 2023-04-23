@@ -112,6 +112,9 @@ ui <- fluidPage(
                     "Infláció viszonyítása más országokhoz (elemenként)" = "RelIndiv",
                     "Infláció viszonyítása más országokhoz (összkép COICOP-főcsoport szinten)" =
                       "RelGroup")),
+      conditionalPanel("input.task=='RelIndiv' | input.task=='RelGroup'",
+                       selectInput("relmethod", "Viszonyítás módszere",
+                                   c("z-score" = "zscore", "Különbség" = "meandiff"))),
       conditionalPanel("input.task=='AbsIndiv' | input.task=='RelIndiv'",
                        selectInput("item", "Vizsgált elem", with(COICOPData[COICOPlevel%in%c(-1, 1, 2)],
                                                                  setNames(coicop, COICOPname)), "CP00"),
@@ -124,11 +127,13 @@ ui <- fluidPage(
       ),
       sliderInput("daterange", "Vizsgált időszak", min(RawData$time), max(RawData$time),
                   c(as.Date("2015-01-01"), max(RawData$time)), timeFormat = "%Y. %m."),
-      conditionalPanel("input.task=='AbsIndiv' | input.task=='AbsGroup'",
+      conditionalPanel("input.task=='AbsIndiv' | input.task=='AbsGroup' |
+                       (input.task=='RelIndiv'&input.relmethod=='meandiff') |
+                       (input.task=='RelGroup'&input.relmethod=='meandiff')",
                        selectInput("countries", "Összehasonlításként megjelenített országok",
                                    c("Teljes EU és Egyesült Királyság" = "EU28", "Visegrádi négyek" = "V4",
                                      "Posztszocialista országok (EU11)" = "EU11", "EU15" = "EU15"))),
-      conditionalPanel("input.task=='RelIndiv' | input.task=='RelGroup'",
+      conditionalPanel("(input.task=='RelIndiv' | input.task=='RelGroup')&input.relmethod=='zscore'",
                        checkboxInput("robust", "Robusztus mutató megjelenítése")),
       selectInput("metric", "Inflációs mutató", c("Éves" = "annual", "Havi" = "monthly"))
     ),
@@ -145,8 +150,9 @@ ui <- fluidPage(
       )
       
     )
-  ), hr(),
-  h4("Írta: Ferenci Tamás, v0.04"),
+  ),
+  hr(),
+  h4("Írta: Ferenci Tamás, v0.05"),
   
   tags$script(HTML("var sc_project=12872814; 
                       var sc_invisible=1; 
@@ -198,8 +204,7 @@ server <- function(input, output) {
                              color = "gray", lineWidth = 0.2, marker = list(enabled = FALSE)) |>
                hc_add_series(temp[geo=="Magyarország"], "line", hcaes(x = time, y = value), lineWidth = 2,
                              marker = list(enabled = FALSE), name = "Magyarország") |>
-               hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B")) |>
-               hc_yAxis(title = list(text = "Éves infláció [%]"))
+               hc_yAxis(title = list(text = paste0(switch(input$metric, "annual" = "Éves", "monthly" = "Havi"), " infláció [%]")))
            },
            "RelIndiv" = {
              code <- input$item
@@ -209,7 +214,7 @@ server <- function(input, output) {
              temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&variable==input$metric]
              if(nrow(temp)==0) return(NULL)
              
-             temp <- rbindlist(lapply(eucountries, function(countries) {
+             temp2 <- rbindlist(lapply(eucountries, function(countries) {
                merge(temp[geo=="Magyarország"],
                      merge(
                        temp[geo%in%countries&geo!="Magyarország"][
@@ -219,29 +224,46 @@ server <- function(input, output) {
                              sigma = matrixStats::weightedSd(value, weight),
                              med = matrixStats::weightedMedian(value, weight),
                              wtmad = matrixStats::weightedMad(value, weight)), .(time)], by = "time")[
-                               , .(time, coicop, zscore = (value-mu)/sigma,
+                               , .(time, coicop, mu, zscore = (value-mu)/sigma,
                                    robzscore = (value-med)/wtmad)]
              }), idcol = "eustate")
              
-             p <- highchart() |>
-               hc_add_series(temp, "line",
-                             hcaes(x = time, y = zscore, group = eustate), marker = list(enabled = FALSE),
-                             visible = sort(unique(temp$eustate))=="EU28") |>
-               hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B"),
-                          valueDecimals = 2) |>
-               hc_yAxis(title = list(text = "z-score"),
-                        plotLines = list(list(value = 0, color = "red", width = 2))) |>
-               hc_colors(c('#2f7ed8', '#0d233a', '#8bbc21', '#910000'))
-             
-             if(input$robust) p <- p |>
-               hc_add_series(temp, "line", hcaes(x = time, y = robzscore, group = eustate),
-                             marker = list(enabled = FALSE), dashStyle = "Dash",
-                             visible = sort(unique(temp$eustate))=="EU28")
+             switch(input$relmethod,
+                    "zscore" = {
+                      p <- highchart() |>
+                        hc_add_series(temp2, "line",
+                                      hcaes(x = time, y = zscore, group = eustate), marker = list(enabled = FALSE),
+                                      visible = sort(unique(temp2$eustate))=="EU28") |>
+                        hc_yAxis(title = list(text = "z-score"),
+                                 plotLines = list(list(value = 0, color = "red", width = 2))) |>
+                        hc_colors(c('#2f7ed8', '#0d233a', '#8bbc21', '#910000'))
+                      
+                      if(input$robust) p <- p |>
+                          hc_add_series(temp2, "line", hcaes(x = time, y = robzscore, group = eustate),
+                                        marker = list(enabled = FALSE), dashStyle = "Dash",
+                                        visible = sort(unique(temp2$eustate))=="EU28")
+                    },
+                    "meandiff" = {
+                      temp2 <- merge(temp, temp2[eustate==input$countries], by = c("time", "coicop"))[
+                        geo%in%eucountries[[input$countries]]]
+                      
+                      p <- highchart() |>
+                        hc_add_series(temp2[geo!="Magyarország"], "line", hcaes(x = time, y = value-mu, group = geo),
+                                      color = "gray", lineWidth = 0.2, marker = list(enabled = FALSE)) |>
+                        hc_add_series(temp2[geo=="Magyarország"], "line", hcaes(x = time, y = value-mu), lineWidth = 2,
+                                      marker = list(enabled = FALSE), name = "Magyarország") |>
+                        hc_yAxis(title = list(text = paste0(switch(input$metric, "annual" = "Éves", "monthly" = "Havi"),
+                                                            " infláció eltérése a viszonyítási országok átlagától [%]")),
+                                 plotLines = list(list(value = 0, color = "red", width = 2)))
+                      
+                    })
            })
     if(input$task%in%c("AbsIndiv", "RelIndiv")) {
       p <- p |>
         hc_title(text = COICOPData[coicop==code]$COICOPname) |>
         hc_xAxis(type = "datetime", dateTimeLabelFormats = list(day = "%Y", month = "%Y. %m.")) |>
+        hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B"),
+                   valueDecimals = switch(input$task, "AbsIndiv" = 1, "RelIndiv" = 2)) |>
         hc_subtitle(text = "Ferenci Tamás, medstat.hu", align = "left", verticalAlign = "bottom") |>
         hc_add_theme(hc_theme(chart = list(backgroundColor = "white"))) |>
         hc_credits(enabled = TRUE) |>
@@ -268,13 +290,14 @@ server <- function(input, output) {
                                   ggplot2::aes(x = time, y = value), color = "#2f7ed8", linewidth = 1) +
                ggplot2::facet_wrap(~COICOPname, scales = "free",
                                    labeller = ggplot2::label_wrap_gen(width = 36)) +
-               ggplot2::labs(y = "Éves infláció [%]", x = "", tag = "Ferenci Tamás, medstat.hu") +
+               ggplot2::labs(y = paste0(switch(input$metric, "annual" = "Éves", "monthly" = "Havi"), " infláció [%]"),
+                             x = "", tag = "Ferenci Tamás, medstat.hu") +
                ggplot2::theme(plot.tag.position = c(0.15, 0))
            },
            "RelGroup" = {
              temp <- RawData[nchar(coicop)==4&substring(coicop, 1, 2)=="CP"&
                                time>=input$daterange[1]&time<=input$daterange[2]&variable==input$metric]
-             temp <- rbindlist(lapply(eucountries, function(countries) {
+             temp2 <- rbindlist(lapply(eucountries, function(countries) {
                merge(temp[geo=="Magyarország"],
                      merge(
                        temp[geo%in%countries&geo!="Magyarország"][
@@ -284,24 +307,46 @@ server <- function(input, output) {
                              sigma = matrixStats::weightedSd(value, weight),
                              med = matrixStats::weightedMedian(value, weight),
                              wtmad = matrixStats::weightedMad(value, weight)), .(time, coicop)],
-                     by = c("time", "coicop"))[, .(time, coicop, zscore = (value-mu)/sigma,
+                     by = c("time", "coicop"))[, .(time, coicop, mu, zscore = (value-mu)/sigma,
                                                    robzscore = (value-med)/wtmad)]
              }), idcol = "eustate")
-             temp <- merge(temp, COICOPData, by = "coicop")
-             temp$COICOPname <- factor(temp$COICOPname,
-                                       levels = unique(temp$COICOPname[order(temp$coicop)]))
+             temp2 <- merge(temp2, COICOPData, by = "coicop")
+             temp2$COICOPname <- factor(temp2$COICOPname,
+                                        levels = unique(temp2$COICOPname[order(temp2$coicop)]))
              
-             ggplot2::ggplot() +
-               ggplot2::geom_line(data = temp,
-                                  ggplot2::aes(x = time, y = zscore, group = eustate, color = eustate)) +
-               {if(input$robust)  ggplot2::geom_line(data = temp,
-                                                     ggplot2::aes(x = time, y = robzscore, group = eustate,
-                                                                  color = eustate), linetype = "dashed")} +
-               ggplot2::facet_wrap(~COICOPname, scales = "free") +
-               ggplot2::geom_hline(yintercept = 0, color = "red") +
-               ggplot2::labs(y = "z-score", x = "", tag = "Ferenci Tamás, medstat.hu") +
-               ggplot2::theme(plot.tag.position = c(0.15, 0), legend.position = "bottom",
-                              legend.title = ggplot2::element_blank())
+             switch (input$relmethod,
+                     "zscore" = {
+                       ggplot2::ggplot() +
+                         ggplot2::geom_line(data = temp2,
+                                            ggplot2::aes(x = time, y = zscore, group = eustate, color = eustate)) +
+                         {if(input$robust)  ggplot2::geom_line(data = temp2,
+                                                               ggplot2::aes(x = time, y = robzscore, group = eustate,
+                                                                            color = eustate), linetype = "dashed")} +
+                         ggplot2::facet_wrap(~COICOPname, scales = "free") +
+                         ggplot2::geom_hline(yintercept = 0, color = "red") +
+                         ggplot2::labs(y = "z-score", x = "", tag = "Ferenci Tamás, medstat.hu") +
+                         ggplot2::theme(plot.tag.position = c(0.15, 0), legend.position = "bottom",
+                                        legend.title = ggplot2::element_blank())
+                     },
+                     "meandiff" = {
+                       temp2 <- merge(temp, temp2[eustate==input$countries], by = c("time", "coicop"))[
+                         geo%in%eucountries[[input$countries]]]
+                       
+                       ggplot2::ggplot() +
+                         ggplot2::geom_line(data = temp2[geo!="Magyarország"],
+                                            ggplot2::aes(x = time, y = value-mu, group = geo), color = "gray",
+                                            linewidth = 0.2) +
+                         ggplot2::geom_line(data = temp2[geo=="Magyarország"],
+                                            ggplot2::aes(x = time, y = value-mu), color = "#2f7ed8", linewidth = 1) +
+                         ggplot2::facet_wrap(~COICOPname, scales = "free",
+                                             labeller = ggplot2::label_wrap_gen(width = 36)) +
+                         ggplot2::geom_hline(yintercept = 0, color = "red") +
+                         ggplot2::labs(y = paste0(switch(input$metric, "annual" = "Éves", "monthly" = "Havi"),
+                                                  " infláció eltérése a viszonyítási országok átlagától [%]"),
+                                       x = "", tag = "Ferenci Tamás, medstat.hu") +
+                         ggplot2::theme(plot.tag.position = c(0.15, 0))
+                     }
+             )
            })
   })
 }

@@ -14,6 +14,8 @@ Példának okáért vizsgáljuk az élelmiszerek és alkoholmentes italok inflá
 
 (Az oldalon lekérhető ennek egy robusztus változata is, melyben az átlag helyett medián, a szórás helyett medián abszolút eltérés (MAD) szerepel, de a képlet egyébként ugyanaz. Ez elképzelhető, hogy jobb mutató akkor, ha a viszonyítási országok inflációi nem szimmetrikus eloszlásúak, vagy nagyon kilógó értékeket tartalmaznak.)
 
+Ha a Viszonyítás módszere pontnál a Különbség lehetőséget választjuk, akkor a szórás figyelembevétele nélküli helyzetet, tehát egyszerűen az átlagtól vett különbséget jeleníti meg az oldal. Annak érdekében azonban, hogy a fenti probléma ne jelentkezzen annyira erősen, ebben az esetben a többi ország adatai is megjelennek halvány vonallal, így a szóródásról is kapunk képet (lényegében grafikus eszközzel illusztrálja ezt, számszerű mutató helyett).
+
 Ez a számítás tehát alapvetően függ attól, hogy mik a viszonyításhoz használt országok; ez megválasztható az oldalon.
 
 ## Hol olvashatóak a technikai részletek? Hol találom meg a felhasznált adatokat pontosan és az oldal forráskódját?
