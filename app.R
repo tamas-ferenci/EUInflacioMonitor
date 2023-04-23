@@ -1,5 +1,6 @@
-library(data.table)
 library(shiny)
+library(data.table)
+library(highcharter)
 
 RawData <- readRDS("RawDataInflation.rds")
 COICOPData <- readRDS("COICOPData.rds")
@@ -136,7 +137,7 @@ ui <- fluidPage(
       tabsetPanel(
         tabPanel("Eredmények",
                  conditionalPanel("input.task=='AbsIndiv' | input.task=='RelIndiv'",
-                                  shinycssloaders::withSpinner(highcharter::highchartOutput(
+                                  shinycssloaders::withSpinner(highchartOutput(
                                     "IndivPlot", height = "450px"))),
                  conditionalPanel("input.task=='AbsGroup' | input.task=='RelGroup'",
                                   shinycssloaders::withSpinner(plotOutput("GroupPlot", height = "450px")))),
@@ -145,7 +146,7 @@ ui <- fluidPage(
       
     )
   ), hr(),
-  h4("Írta: Ferenci Tamás, v0.03"),
+  h4("Írta: Ferenci Tamás, v0.04"),
   
   tags$script(HTML("var sc_project=12872814; 
                       var sc_invisible=1; 
@@ -182,7 +183,7 @@ server <- function(input, output) {
                                      setNames(c("Mindegyik", coicop), c("Mindegyik", COICOPname))))
   })
   
-  output$IndivPlot <- highcharter::renderHighchart({
+  output$IndivPlot <- renderHighchart({
     switch(input$task,
            "AbsIndiv" = {
              code <- input$item
@@ -192,16 +193,13 @@ server <- function(input, output) {
              temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&
                                geo%in%c("Magyarország", eucountries[[input$countries]])&variable==input$metric]
              if(nrow(temp)==0) return(NULL)
-             p <- highcharter::highchart() |>
-               highcharter::hc_add_series(temp[geo!="Magyarország"], "line",
-                                          highcharter::hcaes(x = time, y = value, group = geo),
-                                          color = "gray", lineWidth = 0.2,
-                                          marker = list(enabled = FALSE)) |>
-               highcharter::hc_add_series(temp[geo=="Magyarország"], "line",
-                                          highcharter::hcaes(x = time, y = value), lineWidth = 2,
-                                          marker = list(enabled = FALSE), name = "Magyarország") |>
-               highcharter::hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B")) |>
-               highcharter::hc_yAxis(title = list(text = "Éves infláció [%]"))
+             p <- highchart() |>
+               hc_add_series(temp[geo!="Magyarország"], "line", hcaes(x = time, y = value, group = geo),
+                             color = "gray", lineWidth = 0.2, marker = list(enabled = FALSE)) |>
+               hc_add_series(temp[geo=="Magyarország"], "line", hcaes(x = time, y = value), lineWidth = 2,
+                             marker = list(enabled = FALSE), name = "Magyarország") |>
+               hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B")) |>
+               hc_yAxis(title = list(text = "Éves infláció [%]"))
            },
            "RelIndiv" = {
              code <- input$item
@@ -225,33 +223,29 @@ server <- function(input, output) {
                                    robzscore = (value-med)/wtmad)]
              }), idcol = "eustate")
              
-             p <- highcharter::highchart() |>
-               highcharter::hc_add_series(temp, "line",
-                                          highcharter::hcaes(x = time, y = zscore, group = eustate),
-                                          marker = list(enabled = FALSE),
-                                          visible = sort(unique(temp$eustate))=="EU28") |>
-               highcharter::hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B"),
-                                       valueDecimals = 2) |>
-               highcharter::hc_yAxis(title = list(text = "z-score"),
-                                     plotLines = list(list(value = 0, color = "red", width = 2))) |>
-               highcharter::hc_colors(c('#2f7ed8', '#0d233a', '#8bbc21', '#910000'))
+             p <- highchart() |>
+               hc_add_series(temp, "line",
+                             hcaes(x = time, y = zscore, group = eustate), marker = list(enabled = FALSE),
+                             visible = sort(unique(temp$eustate))=="EU28") |>
+               hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B"),
+                          valueDecimals = 2) |>
+               hc_yAxis(title = list(text = "z-score"),
+                        plotLines = list(list(value = 0, color = "red", width = 2))) |>
+               hc_colors(c('#2f7ed8', '#0d233a', '#8bbc21', '#910000'))
              
              if(input$robust) p <- p |>
-               highcharter::hc_add_series(temp, "line",
-                                          highcharter::hcaes(x = time, y = robzscore, group = eustate),
-                                          marker = list(enabled = FALSE), dashStyle = "Dash",
-                                          visible = sort(unique(temp$eustate))=="EU28")
+               hc_add_series(temp, "line", hcaes(x = time, y = robzscore, group = eustate),
+                             marker = list(enabled = FALSE), dashStyle = "Dash",
+                             visible = sort(unique(temp$eustate))=="EU28")
            })
     if(input$task%in%c("AbsIndiv", "RelIndiv")) {
       p <- p |>
-        highcharter::hc_title(text = COICOPData[coicop==code]$COICOPname) |>
-        highcharter::hc_xAxis(type = "datetime",
-                              dateTimeLabelFormats = list(day = "%Y", month = "%Y. %m.")) |>
-        highcharter::hc_subtitle(text = "Ferenci Tamás, medstat.hu", align = "left",
-                                 verticalAlign = "bottom") |>
-        highcharter::hc_add_theme(highcharter::hc_theme(chart = list(backgroundColor = "white"))) |>
-        highcharter::hc_credits(enabled = TRUE) |>
-        highcharter::hc_exporting(enabled = TRUE, chartOptions = list(legend = list(enabled = FALSE)))
+        hc_title(text = COICOPData[coicop==code]$COICOPname) |>
+        hc_xAxis(type = "datetime", dateTimeLabelFormats = list(day = "%Y", month = "%Y. %m.")) |>
+        hc_subtitle(text = "Ferenci Tamás, medstat.hu", align = "left", verticalAlign = "bottom") |>
+        hc_add_theme(hc_theme(chart = list(backgroundColor = "white"))) |>
+        hc_credits(enabled = TRUE) |>
+        hc_exporting(enabled = TRUE, chartOptions = list(legend = list(enabled = FALSE)))
       
       p
     }
