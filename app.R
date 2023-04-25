@@ -5,6 +5,8 @@ library(highcharter)
 RawData <- readRDS("RawDataInflation.rds")
 COICOPData <- readRDS("COICOPData.rds")
 RawDataCountryWeights <- readRDS("RawDataCountryWeights.rds")
+RawDataWage <- readRDS("RawDataWage.rds")
+RawDataUnemp <- readRDS("RawDataUnemp.rds")
 
 hcoptslang <- getOption("highcharter.lang")
 hcoptslang$contextButtonTitle <- "Helyi menü"
@@ -111,11 +113,15 @@ ui <- fluidPage(
                     "Infláció abszolút mértéke (összkép COICOP-főcsoport szinten)" = "AbsGroup",
                     "Infláció viszonyítása más országokhoz (elemenként)" = "RelIndiv",
                     "Infláció viszonyítása más országokhoz (összkép COICOP-főcsoport szinten)" =
-                      "RelGroup")),
+                      "RelGroup",
+                    "Potenciálisan összefüggő vagy befolyásoló változók" = "correlates")),
+      conditionalPanel("input.task=='correlates'", selectInput("correlate", "Változó",
+                                                               c("Bruttó átlagkereset" = "wage",
+                                                                 "Munkanélküliség" = "unemp"))),
       conditionalPanel("input.task=='RelIndiv' | input.task=='RelGroup'",
                        selectInput("relmethod", "Viszonyítás módszere",
                                    c("z-score" = "zscore", "Különbség" = "meandiff"))),
-      conditionalPanel("input.task=='AbsIndiv' | input.task=='RelIndiv'",
+      conditionalPanel("input.task=='AbsIndiv' | input.task=='RelIndiv' | input.task=='correlates'",
                        selectInput("item", "Vizsgált elem", with(COICOPData[COICOPlevel%in%c(-1, 1, 2)],
                                                                  setNames(coicop, COICOPname)), "CP00"),
                        conditionalPanel("input.item.indexOf('CP') > -1 & input.item!='CP00'",
@@ -125,8 +131,6 @@ ui <- fluidPage(
                        conditionalPanel("!!input.alcsoport & input.alcsoport!='Mindegyik'",
                                         selectInput("kategoria", "COICOP-kategória", NULL))
       ),
-      sliderInput("daterange", "Vizsgált időszak", min(RawData$time), max(RawData$time),
-                  c(as.Date("2015-01-01"), max(RawData$time)), timeFormat = "%Y. %m."),
       conditionalPanel("input.task=='AbsIndiv' | input.task=='AbsGroup' |
                        (input.task=='RelIndiv'&input.relmethod=='meandiff') |
                        (input.task=='RelGroup'&input.relmethod=='meandiff')",
@@ -141,18 +145,20 @@ ui <- fluidPage(
     mainPanel(
       tabsetPanel(
         tabPanel("Eredmények",
-                 conditionalPanel("input.task=='AbsIndiv' | input.task=='RelIndiv'",
+                 conditionalPanel("input.task=='AbsIndiv' | input.task=='RelIndiv' | input.task=='correlates'",
                                   shinycssloaders::withSpinner(highchartOutput(
                                     "IndivPlot", height = "450px"))),
                  conditionalPanel("input.task=='AbsGroup' | input.task=='RelGroup'",
-                                  shinycssloaders::withSpinner(plotOutput("GroupPlot", height = "450px")))),
+                                  shinycssloaders::withSpinner(plotOutput("GroupPlot", height = "450px"))),
+                 sliderInput("daterange", "Vizsgált időszak", min(RawData$time), max(RawData$time),
+                             c(as.Date("2015-01-01"), max(RawData$time)), timeFormat = "%Y. %m.", width = "100%")),
         tabPanel("Magyarázat", includeMarkdown("explanation.md"))
       )
       
     )
   ),
   hr(),
-  h4("Írta: Ferenci Tamás, v0.05"),
+  h4("Írta: Ferenci Tamás, v0.07"),
   
   tags$script(HTML("var sc_project=12872814; 
                       var sc_invisible=1; 
@@ -189,13 +195,19 @@ server <- function(input, output) {
                                      setNames(c("Mindegyik", coicop), c("Mindegyik", COICOPname))))
   })
   
+  codeInput <- reactive({
+    code <- input$item
+    if(input$csoport!="Mindegyik") code <- input$csoport
+    if(input$alcsoport!="Mindegyik") code <- input$alcsoport
+    if(input$kategoria!="Mindegyik") code <- input$kategoria
+    code
+  })
+  
   output$IndivPlot <- renderHighchart({
+    code <- codeInput()
     switch(input$task,
            "AbsIndiv" = {
-             code <- input$item
-             if(input$csoport!="Mindegyik") code <- input$csoport
-             if(input$alcsoport!="Mindegyik") code <- input$alcsoport
-             if(input$kategoria!="Mindegyik") code <- input$kategoria
+             
              temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&
                                geo%in%c("Magyarország", eucountries[[input$countries]])&variable==input$metric]
              if(nrow(temp)==0) return(NULL)
@@ -207,10 +219,6 @@ server <- function(input, output) {
                hc_yAxis(title = list(text = paste0(switch(input$metric, "annual" = "Éves", "monthly" = "Havi"), " infláció [%]")))
            },
            "RelIndiv" = {
-             code <- input$item
-             if(input$csoport!="Mindegyik") code <- input$csoport
-             if(input$alcsoport!="Mindegyik") code <- input$alcsoport
-             if(input$kategoria!="Mindegyik") code <- input$kategoria
              temp <- RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&variable==input$metric]
              if(nrow(temp)==0) return(NULL)
              
@@ -257,13 +265,36 @@ server <- function(input, output) {
                                  plotLines = list(list(value = 0, color = "red", width = 2)))
                       
                     })
+           },
+           "correlates" = {
+             switch(input$correlate,
+                    "wage" = {
+                      p <- highchart() |>
+                        # hc_yAxis_multiples(list(title = list(text = "Bruttó átlagkereset"), opposite = FALSE),
+                        #                    list(showLastLabel = FALSE, opposite = TRUE, title = list(text = "Infláció"))) |>
+                        hc_add_series(RawDataWage[time>=input$daterange[1]&time<=input$daterange[2]&variable%in%c("Non-profit szervezetek", "Költségvetés")], "line",
+                                      hcaes(x = time, y = index, group = variable), marker = list(enabled = FALSE),
+                                      visible = FALSE) |>
+                        hc_add_series(RawDataWage[time>=input$daterange[1]&time<=input$daterange[2]&!variable%in%c("Non-profit szervezetek", "Költségvetés")], "line",
+                                      hcaes(x = time, y = index, group = variable), marker = list(enabled = FALSE))
+                    },
+                    "unemp" = {
+                      p <- highchart() |>
+                        # hc_yAxis_multiples(list(title = list(text = "Munkanélküliség"), opposite = FALSE),
+                        #                    list(showLastLabel = FALSE, opposite = TRUE, title = list(text = "Infláció"))) |>
+                        hc_add_series(RawDataUnemp[time>=input$daterange[1]&time<=input$daterange[2]], "line",
+                                      hcaes(x = time, y = values), marker = list(enabled = FALSE), name = "Munkanélküliség")
+                    })
+             p <- p |>
+               hc_add_series(RawData[coicop==code&time>=input$daterange[1]&time<=input$daterange[2]&variable==input$metric&geo=="Magyarország"],
+                             "line", hcaes(x = time, y = value), name = "Infláció",
+                             marker = list(enabled = FALSE))
            })
-    if(input$task%in%c("AbsIndiv", "RelIndiv")) {
+    if(input$task%in%c("AbsIndiv", "RelIndiv", "correlates")) {
       p <- p |>
         hc_title(text = COICOPData[coicop==code]$COICOPname) |>
         hc_xAxis(type = "datetime", dateTimeLabelFormats = list(day = "%Y", month = "%Y. %m.")) |>
-        hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B"),
-                   valueDecimals = switch(input$task, "AbsIndiv" = 1, "RelIndiv" = 2)) |>
+        hc_tooltip(dateTimeLabelFormats = list(day = "%Y. %B", month = "%Y. %B"), valueDecimals = 1) |>
         hc_subtitle(text = "Ferenci Tamás, medstat.hu", align = "left", verticalAlign = "bottom") |>
         hc_add_theme(hc_theme(chart = list(backgroundColor = "white"))) |>
         hc_credits(enabled = TRUE) |>

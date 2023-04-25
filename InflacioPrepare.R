@@ -59,3 +59,17 @@ COICOPData$COICOPlevel <- ifelse(substring(COICOPData$coicop, 1, 2)=="CP", nchar
 COICOPData[coicop=="CP00"]$COICOPlevel <- 1
 COICOPData <- COICOPData[order(COICOPlevel==-1, COICOPlevel)]
 saveRDS(COICOPData, "COICOPData.rds")
+
+RawDataWage <- fread("BruttoAtlagkereset.csv", dec = ",", check.names = TRUE)
+RawDataWage$year <- as.numeric(substring(RawDataWage$Időszak, 1, 4))
+RawDataWage$month <- c(rep(1:12, floor(nrow(RawDataWage)/12)), (1:12)[1:(nrow(RawDataWage)-floor(nrow(RawDataWage)/12)*12)])
+RawDataWage <- melt(RawDataWage[, .(`Nemzetgazdaság` = Mindösszesen.Összevont.gazdálkodási.forma,
+                                    `Non-profit szervezetek` = Non.profit.szervezetek,
+                                    Vállalkozások, `Költségvetés` = Költségvetési.szervezetek, year, month)], id.vars = c("year", "month"))
+RawDataWage <- merge(RawDataWage, RawDataWage[, .(year = year+1, month, variable, value)], by = c("year", "month", "variable"))[, .(year, month, variable, index = (value.x/value.y-1)*100)]
+RawDataWage$time <- as.Date(paste0(RawDataWage$year, "-", RawDataWage$month, "-15"))
+saveRDS(RawDataWage, "RawDataWage.rds")
+
+RawDataUnemp <-  as.data.table(eurostat::get_eurostat("une_rt_m"))
+RawDataUnemp <- RawDataUnemp[s_adj=="NSA"&age=="TOTAL"&unit=="PC_ACT"&sex=="T"&geo=="HU"&time>="1999-01-01"]
+saveRDS(RawDataUnemp, "RawDataUnemp.rds")
