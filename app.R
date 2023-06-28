@@ -158,7 +158,7 @@ ui <- fluidPage(
     )
   ),
   hr(),
-  h4("Írta: Ferenci Tamás, v0.08"),
+  h4("Írta: Ferenci Tamás, v0.09"),
   
   tags$script(HTML("var sc_project=12872814; 
                       var sc_invisible=1; 
@@ -298,7 +298,8 @@ server <- function(input, output) {
         hc_subtitle(text = "Ferenci Tamás, medstat.hu", align = "left", verticalAlign = "bottom") |>
         hc_add_theme(hc_theme(chart = list(backgroundColor = "white"))) |>
         hc_credits(enabled = TRUE) |>
-        hc_exporting(enabled = TRUE, chartOptions = list(legend = list(enabled = FALSE)),
+        hc_exporting(enabled = TRUE,
+                     chartOptions = list(legend = list(enabled = if(input$task=="AbsIndiv") FALSE else TRUE)),
                      sourceWidth = 1600/2, sourceHeight = 900/2)
       
       p
