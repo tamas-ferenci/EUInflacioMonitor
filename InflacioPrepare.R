@@ -1,7 +1,7 @@
 library(data.table)
 
 RawDataCountryWeights <- as.data.table(eurostat::get_eurostat("prc_hicp_cow"))
-RawDataCountryWeights$year <- lubridate::year(RawDataCountryWeights$time)
+RawDataCountryWeights$year <- lubridate::year(RawDataCountryWeights$TIME_PERIOD)
 RawDataCountryWeights <- rbindlist(lapply(
   1999:max(RawDataCountryWeights$year),
   function(yr)
@@ -15,12 +15,13 @@ names(RawDataCountryWeights)[names(RawDataCountryWeights)=="values"] <- "weight"
 RawDataCountryWeights$geo <- countrycode::countrycode(RawDataCountryWeights$geo, "eurostat", "cldr.name.hu")
 saveRDS(RawDataCountryWeights, "RawDataCountryWeights.rds")
 
-RawData <- merge(as.data.table(eurostat::get_eurostat("prc_hicp_manr"))[, .(coicop, geo, time, annual = values)],
-                 as.data.table(eurostat::get_eurostat("prc_hicp_mmor"))[, .(coicop, geo, time, monthly = values)],
-                 by = c("coicop", "geo", "time"), all = TRUE)
-RawData <- RawData[geo%in%c(eurostat::eu_countries$code, "UK")&time>="1999-01-01"]
-RawData$year <- lubridate::year(RawData$time)
+RawData <- merge(as.data.table(eurostat::get_eurostat("prc_hicp_manr"))[, .(coicop, geo, TIME_PERIOD, annual = values)],
+                 as.data.table(eurostat::get_eurostat("prc_hicp_mmor"))[, .(coicop, geo, TIME_PERIOD, monthly = values)],
+                 by = c("coicop", "geo", "TIME_PERIOD"), all = TRUE)
+RawData <- RawData[geo%in%c(eurostat::eu_countries$code, "UK")&TIME_PERIOD>="1999-01-01"]
+RawData$year <- lubridate::year(RawData$TIME_PERIOD)
 RawData$geo <- countrycode::countrycode(RawData$geo, "eurostat", "cldr.name.hu")
+RawData$time <- RawData$TIME_PERIOD
 RawData <- melt(RawData[, .(coicop, geo, time, annual, monthly)], id.vars = c("coicop", "geo", "time"))
 RawData <- RawData[order(geo, time, variable, coicop)]
 saveRDS(RawData, "RawDataInflation.rds")
@@ -60,6 +61,11 @@ COICOPData[coicop=="CP00"]$COICOPlevel <- 1
 COICOPData <- COICOPData[order(COICOPlevel==-1, COICOPlevel)]
 saveRDS(COICOPData, "COICOPData.rds")
 
+# Nemzetgazdaság: STADAT 20.2.1.46
+# Non-profit szervezetek: STADAT 20.2.1.45
+# Vállalkozások: STADAT 20.2.1.43
+# Költségvetés: STADAT 20.2.1.44
+# Megj.: Jobb lenne a tájékoztatási adatbázis, de ott nem találom...!
 RawDataWage <- fread("BruttoAtlagkereset.csv", dec = ",", check.names = TRUE)
 RawDataWage$year <- as.numeric(substring(RawDataWage$Időszak, 1, 4))
 RawDataWage$month <- c(rep(1:12, floor(nrow(RawDataWage)/12)), (1:12)[1:(nrow(RawDataWage)-floor(nrow(RawDataWage)/12)*12)])
@@ -71,5 +77,6 @@ RawDataWage$time <- as.Date(paste0(RawDataWage$year, "-", RawDataWage$month, "-1
 saveRDS(RawDataWage, "RawDataWage.rds")
 
 RawDataUnemp <-  as.data.table(eurostat::get_eurostat("une_rt_m"))
-RawDataUnemp <- RawDataUnemp[s_adj=="NSA"&age=="TOTAL"&unit=="PC_ACT"&sex=="T"&geo=="HU"&time>="1999-01-01"]
+RawDataUnemp <- RawDataUnemp[s_adj=="NSA"&age=="TOTAL"&unit=="PC_ACT"&sex=="T"&geo=="HU"&TIME_PERIOD>="1999-01-01"]
+names(RawDataUnemp)[names(RawDataUnemp) == "TIME_PERIOD"] <- "time"
 saveRDS(RawDataUnemp, "RawDataUnemp.rds")
